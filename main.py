@@ -1,12 +1,10 @@
-#%%
+#%% Imports
 
 import itertools
 import matplotlib.pyplot as plt
 import numpy as np
+#%% Question 1.c.3 State Value
 
-#%%
-
-# Question 1.c.3 State Value
 P = np.array([[0, 1, 0, 0],
               [0, 1 / 3, 1 / 3, 1 / 3],
               [0, 0, 1, 0],
@@ -52,12 +50,12 @@ def state_value(R, P, discount, threshold=0.001):
 
 print("State value for each state: {}".format(state_value(R, P, 1)))
 
-#%%
-# Question 2 GridWorld
+#%% Question 2 GridWorld
 
 class GridWorld(object):
+    # Refactored code from lab 1
 
-    def __init__(self):
+    def __init__(self, p, plot_maps = False):
 
         # Parameters of the GridWorld
         self.shape = (6, 6)
@@ -67,25 +65,22 @@ class GridWorld(object):
         self.default_reward = -1
         self.action_names = ['N', 'E', 'S', 'W']  # Action 0 is 'N', 1 is 'E' and so on
         self.actions_displacement = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # displacement corresponding to each action
+        self.action_arrows = [r"$\uparrow$", r"$\rightarrow$", r"$\downarrow$", r"$\leftarrow$"]  # arrows corresponding to actions
         self.action_size = len(self.action_names)
 
         # probability of successfully going to where the action was aiming at (corresponds to 'p')
-        self.action_success_proba = 9 / 20
+        self.action_success_proba = p
 
         # Build attributes defining the GridWorld
         self._build_grid_world()
 
-        # TODO change
-        self.starting_loc = (3, 0)
-        self.starting_state = self._loc_to_state(self.starting_loc, self.locs)  # Number of the starting state
-        # Locating the initial state
-        self.initial = np.zeros((1, len(self.locs)));
-        self.initial[0, self.starting_state] = 1
+        # starting state is chosen uniformly randomly from all non-terminal states
+        self.starting_state = np.random.uniform(0, self.state_size)
 
         # Placing the walls on a bitmap
         self.walls = np.zeros(self.shape);
         for ob in self.obstacle_locs:
-            self.walls[ob] = 1
+            self.walls[ob] = -5
 
         # Placing the absorbers on a grid for illustration
         self.absorbers = np.zeros(self.shape)
@@ -95,10 +90,12 @@ class GridWorld(object):
         # Placing the rewarders on a grid for illustration
         self.rewarders = np.zeros(self.shape)
         for i, rew in enumerate(self.absorbing_locs):
-            self.rewarders[rew] = self.special_rewards[i]
+            self.rewarders[rew] = np.clip(self.special_rewards[i], -10, 10)
 
         # Illustrating the grid world
-        self._paint_maps()
+        self.cmap = plt.get_cmap("RdYlGn")
+        if plot_maps:
+            self._paint_maps()
 
     ### Private methods
 
@@ -106,13 +103,13 @@ class GridWorld(object):
         """Helper function to print the grid word used"""
         plt.figure()
         plt.subplot(1, 3, 1)
-        plt.imshow(self.walls)
+        plt.imshow(self.walls, cmap=self.cmap)
         plt.title('Obstacles')
         plt.subplot(1, 3, 2)
-        plt.imshow(self.absorbers)
+        plt.imshow(self.absorbers, cmap=self.cmap)
         plt.title('Absorbing states')
         plt.subplot(1, 3, 3)
-        plt.imshow(self.rewarders)
+        plt.imshow(self.rewarders, cmap=self.cmap)
         plt.title('Reward states')
         plt.show()
 
@@ -161,18 +158,9 @@ class GridWorld(object):
         neighbours_coords = [(loc[0] + i, loc[1] + j) if self._is_valid_location((loc[0] + i, loc[1] + j)) else loc for (i, j) in self.actions_displacement]
         return list(map(lambda coords: self._loc_to_state(coords, self.locs), neighbours_coords))
 
-    def _get_action_target_state(self, state, action):
-        """Returns target state of an action
-
-        :param state: prior state index
-        :param action: action index performed
-        :return: target state index
-        """
-        return self._loc_to_state(tuple(x + i for x, i in zip(self.locs[state], self.actions_displacement[action])), self.locs)
-
     ### Drawing Functions
 
-    def draw_deterministic_policy(self, policy):
+    def draw_deterministic_policy(self, policy, title):
         """
         Draws a deterministic policy.
         The policy needs to be a np array of 22 values between 0 and 3 with.
@@ -180,33 +168,28 @@ class GridWorld(object):
         """
         plt.figure()
 
-        plt.imshow(self.walls + self.rewarders + self.absorbers)  # Create the graph of the grid
+        plt.imshow(self.walls + self.rewarders + self.absorbers, cmap=self.cmap)  # Create the graph of the grid
         # plt.hold('on')
         for state, action in enumerate(policy):
-            if self.absorbing[state]:  # If it is an absorbing state, don't plot any action
-                continue
-            arrows = [r"$\uparrow$", r"$\rightarrow$", r"$\downarrow$",
-                      r"$\leftarrow$"]  # List of arrows corresponding to each possible action
-            action_arrow = arrows[action]  # Take the corresponding action
-            location = self.locs[state]  # Compute its location on graph
-            plt.text(location[1], location[0], action_arrow, ha='center', va='center')  # Place it on graph
-
+            if not self.absorbing[state]:  # If it is an absorbing state, don't plot any action
+                location = self.locs[state]  # Compute its location on graph
+                plt.text(location[1], location[0], self.action_arrows[action], ha='center', va='center')  # Place it on graph
+        plt.title(title)
         plt.show()
 
-    def draw_value(self, Value):
+    def draw_value(self, Value, title):
         """
         Draws a policy value function.
         The value need to be a np array of 22 values
         """
         plt.figure()
 
-        plt.imshow(self.walls + self.rewarders + self.absorbers)  # Create the graph of the grid
+        plt.imshow(self.walls + self.rewarders + self.absorbers, cmap=self.cmap)  # Create the graph of the grid
         for state, value in enumerate(Value):
-            if (self.absorbing[state]):  # If it is an absorbing state, don't plot any value
-                continue
-            location = self.locs[state]  # Compute the value location on graph
-            plt.text(location[1], location[0], round(value, 2), ha='center', va='center')  # Place it on graph
-
+            if not self.absorbing[state]:  # If it is an absorbing state, don't plot any value
+                location = self.locs[state]  # Compute the value location on graph
+                plt.text(location[1], location[0], round(value, 2), ha='center', va='center')  # Place it on graph
+        plt.title(title)
         plt.show()
 
     def draw_deterministic_policy_grid(self, policy, title, n_columns, n_lines):
@@ -216,15 +199,11 @@ class GridWorld(object):
         plt.figure(figsize=(20, 8))
         for subplot in range(len(policy)):  # Go through all policies
             ax = plt.subplot(n_columns, n_lines, subplot + 1)  # Create a subplot for each policy
-            ax.imshow(self.walls + self.rewarders + self.absorbers)  # Create the graph of the grid
+            ax.imshow(self.walls + self.rewarders + self.absorbers, cmap=self.cmap)  # Create the graph of the grid
             for state, action in enumerate(policy[subplot]):
-                if (self.absorbing[state]):  # If it is an absorbing state, don't plot any action
-                    continue
-                arrows = [r"$\uparrow$", r"$\rightarrow$", r"$\downarrow$",
-                          r"$\leftarrow$"]  # List of arrows corresponding to each possible action
-                action_arrow = arrows[action]  # Take the corresponding action
-                location = self.locs[state]  # Compute its location on graph
-                plt.text(location[1], location[0], action_arrow, ha='center', va='center')  # Place it on graph
+                if not self.absorbing[state]:  # If it is an absorbing state, don't plot any action
+                    location = self.locs[state]  # Compute its location on graph
+                    plt.text(location[1], location[0], self.action_arrows[action], ha='center', va='center')  # Place it on graph
             ax.title.set_text(title[subplot])  # Set the title for the graoh given as argument
         plt.show()
 
@@ -234,13 +213,48 @@ class GridWorld(object):
         plt.figure(figsize=(20, 8))
         for subplot in range(len(Value)):  # Go through all values
             ax = plt.subplot(n_columns, n_lines, subplot + 1)  # Create a subplot for each value
-            ax.imshow(self.walls + self.rewarders + self.absorbers)  # Create the graph of the grid
+            ax.imshow(self.walls + self.rewarders + self.absorbers, cmap=self.cmap)  # Create the graph of the grid
             for state, value in enumerate(Value[subplot]):
                 if (self.absorbing[state]):  # If it is an absorbing state, don't plot any value
                     continue
                 location = self.locs[state]  # Compute the value location on graph
                 plt.text(location[1], location[0], round(value, 1), ha='center', va='center')  # Place it on graph
             ax.title.set_text(title[subplot])  # Set the title for the graoh given as argument
+        plt.show()
+
+    def draw_value_and_policy_grid(self, param_search_results, param_shapes, param_names, title):
+        """Draws a grid of optimal (deterministic) policies and state value function agaisnt variation of 2 parameters
+
+        :param param_search_results: dictionary of the form {(param1, param2): (policy, V, epochs)}
+        :param param_shapes: list of parameter range lengths
+        :param param_names: name of the parameters
+        :param title: title of the overall plot
+        """
+        plt.figure(figsize=(25, 25))
+        #epochs_grid = []
+
+        for i, ((param1, param2), (policy, V, epochs)) in enumerate(param_search_results.items()):
+            ax = plt.subplot(param_shapes[0], param_shapes[1], i + 1)  # subplot for each policy & value
+            ax.imshow(self.walls + self.rewarders + self.absorbers, cmap=self.cmap)  # Create the graph of the grid
+
+            for state in range(len(policy)):  # for each state in the grid
+                if not self.absorbing[state]:  # If it is an absorbing state, don't plot any action
+                    location = self.locs[state]  # Compute its location on graph
+                    text = str(round(V[state], 2)) + '\n' + self.action_arrows[policy[state]]
+                    plt.text(location[1], location[0], text, ha='center', va='center')  # Place value and arrow
+            #ax.title.set_text("Epochs = {}".format(epochs))
+
+            # Set row and column titles
+            if i < param_shapes[0]:
+                ax.set_title("{} = {}".format(param_names[1], param2))
+            if not i % param_shapes[0]:
+                ax.set_ylabel("{} = {}".format(param_names[0], param1), size='large')
+
+            # epochs_grid.append(epochs)
+            plt.text(0.5, 0.5, epochs, ha='center', va='center')
+
+        #plt.title(title)
+        plt.tight_layout()
         plt.show()
 
     ### Methods
@@ -261,21 +275,20 @@ class GridWorld(object):
             epoch += 1
             for state_idx in range(policy.shape[0]):
                 # If it is one of the absorbing states, ignore
-                if (self.absorbing[state_idx]):
-                    continue
+                if not self.absorbing[state_idx]:
 
-                # Accumulator variable for the Value of a state
-                tmpV = 0
-                for action_idx in range(policy.shape[1]):
-                    # Accumulator variable for the State-Action Value
-                    tmpQ = 0
-                    for state_idx_prime in range(policy.shape[0]):
-                        tmpQ += self.T[state_idx_prime, state_idx, action_idx] * (
-                                    self.R[state_idx_prime, state_idx, action_idx] + discount * V[state_idx_prime])
-                    tmpV += policy[state_idx, action_idx] * tmpQ
+                    # Accumulator variable for the Value of a state
+                    tmpV = 0
+                    for action_idx in range(policy.shape[1]):
+                        # Accumulator variable for the State-Action Value
+                        tmpQ = 0
+                        for state_idx_prime in range(policy.shape[0]):
+                            tmpQ += self.T[state_idx_prime, state_idx, action_idx] * (
+                                        self.R[state_idx_prime, state_idx, action_idx] + discount * V[state_idx_prime])
+                        tmpV += policy[state_idx, action_idx] * tmpQ
 
-                # Update the value of the state
-                Vnew[state_idx] = tmpV
+                    # Update the value of the state
+                    Vnew[state_idx] = tmpV
 
             # After updating the values of all states, update the delta
             delta = max(abs(Vnew - V))
@@ -293,7 +306,7 @@ class GridWorld(object):
         while not policy_stable:
 
             # 2. Policy Evaluation
-            V, eval_epochs = grid.policy_evaluation(policy, threshold, discount)
+            V, eval_epochs = grid.policy_evaluation(policy, discount, threshold=threshold)
             epochs += eval_epochs  # Count epochs from evaluation too
             # print("Epoch nbr {}".format(epochs))
 
@@ -320,7 +333,7 @@ class GridWorld(object):
 
         return policy, V, epochs
 
-    def value_iteration(self, discount, threshold=0.0001):
+    def value_iteration(self, discount, threshold=0.0001, return_deterministic_policy = True):
         # 1. Init
         V = np.zeros(grid.state_size)
 
@@ -352,19 +365,63 @@ class GridWorld(object):
         optimal_policy = np.zeros((grid.state_size, grid.action_size))  # Initialisation
 
         for state_idx in range(grid.state_size):
-
             # Compute Q value
             Q = np.zeros(grid.action_size)
             for state_idx_prime in range(grid.state_size):
-                Q += self.T[state_idx_prime, state_idx, :] * (
-                            R[state_idx_prime, state_idx, :] + discount * V[state_idx_prime])
+                Q += self.T[state_idx_prime, state_idx, :] * (self.R[state_idx_prime, state_idx, :] + discount * V[state_idx_prime])
 
             optimal_policy[state_idx, np.argmax(Q)] = 1
 
-        return optimal_policy, grid.policy_evaluation(optimal_policy, threshold, discount)[0], epochs
+        # value evaluation
+        V = grid.policy_evaluation(optimal_policy, discount, threshold=threshold)[0]
+
+        if return_deterministic_policy:
+            # return list of one action from each state if chosen to
+            optimal_policy = np.array(np.argmax(optimal_policy, axis=1))
+
+        return optimal_policy, V, epochs
 
 
-grid = GridWorld()
-print(grid.T)
-print(grid.R)
-## Question 2.b Dynamic Programming (Value Iteration?)
+#%% Question 2.a
+
+# CID: 01352334
+x, y = 3, 3
+p = 0.25 + 0.5 * (x + 1) / 10
+discount = 0.2 + 0.5 * y / 10
+print("p = {} and gamma = {}".format(p, discount))
+
+#%% Question 2.b Dynamic Programming (Value Iteration)
+
+grid = GridWorld(p)
+### Question 2.b.1
+optimal_policy, optimal_V, epochs = grid.value_iteration(discount)
+print("Value Iteration epochs {}".format(epochs))
+
+### Question 2.b.2
+grid.draw_value(optimal_V, "Optimal value function from Value Iteration Algorithm")
+
+### Question 2.b.3
+grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from Value Iteration Algorithm")
+
+### Question 2.b.4
+
+# Custom parameters range
+p_range = [0, 0.12, 0.25, 0.37, 1]
+discount_range = [0, 0.25, 0.5, 0.75, 1]
+param_search_results = {}
+
+for (p, discount) in itertools.product(p_range, discount_range):
+    param_search_results[(p, discount)] = (GridWorld(p).value_iteration(discount))
+
+# Print all value functions and policies for different values of p and discount
+grid.draw_value_and_policy_grid(param_search_results, (len(p_range), len(discount_range)), ["p", "discount"],  "Value function and optimal policy against different p and discount")
+
+#%% Question 2.c Monte Carlo RL
+
+
+#%% Question 2.d Temporal Difference RL
+
+
+#%% Question 2.e Comparison of learners
+
+
