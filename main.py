@@ -1,8 +1,10 @@
 #%% Imports
 
-import itertools
 import matplotlib.pyplot as plt
 import numpy as np
+import itertools
+from functools import reduce
+
 #%% Question 1.c.3 State Value
 
 P = np.array([[0, 1, 0, 0],
@@ -73,9 +75,6 @@ class GridWorld(object):
 
         # Build attributes defining the GridWorld
         self._build_grid_world()
-
-        # starting state is chosen uniformly randomly from all non-terminal states
-        self.starting_state = np.random.uniform(0, self.state_size)
 
         # Placing the walls on a bitmap
         self.walls = np.zeros(self.shape);
@@ -381,6 +380,174 @@ class GridWorld(object):
 
         return optimal_policy, V, epochs
 
+    def monte_carlo_policy_estimation(self, policy, discount, nbr_episodes):
+        pass
+
+    def monte_carlo_exploring_starts(self, discount, nbr_episodes, learning_rate, threshold=0.0001):
+        """Monte Carlo control algorithm based on pseudo-code from "Reinforcement Learning: An Introduction" by todo page 123
+        Notes:
+            Exploring start is enabled thanks to p < 1
+            first visit
+            A deterministic policy is returned as a list with an action index for a each state
+            Non-batch i.e episode by episode
+        """
+        # Initialisation
+        policy = np.zeros(self.state_size, dtype=int)
+        episode_index = 0
+        episode_returns = []  # list of returns for each episode
+        Q = np.zeros((self.state_size, self.action_size))  # state-action function
+
+
+        while episode_index < nbr_episodes:  #todo convergence
+            episode_index += 1
+            if not (episode_index % 100):
+                print("MC Control - Episode {}/{}".format(episode_index, nbr_episodes))
+            # starting state and action are chosen uniformly randomly from all non-terminal states and possible actions
+            starting_state = np.random.randint(0, self.state_size)
+            starting_action = np.random.randint(0, self.action_size)
+
+            # Generate an episode
+            episode = self.generate_episode(policy, starting_state, starting_action)
+            # reset Q and returns for each episode
+            #Q = np.zeros((self.state_size, self.action_size))  # state-action function
+            #returns = [[[] for action in range(self.action_size)] for state in range(self.state_size)]
+            for (state, action, _) in episode:
+                G = self._get_first_visit_return(episode, (state, action), discount)
+                #returns[state][action].append(G)
+                #Q[state, action] = sum(returns[state][action]) / len(returns[state][action])  # average
+                Q[state, action] += learning_rate * (G - Q[state, action])  # non-stationary running mean
+
+            for state in set(list(zip(*episode))[0]):
+                # todo epsi-greedy
+                policy[state] = np.argmax(Q[state, :])  # greedy policy improvement
+
+            episode_returns.append(self._get_episode_return(episode, discount))
+
+        # Compute V using last Q values
+        # V is the sum over a of policy(s, a) * Q(s, a). Since policy is deterministic here, we just use one Q value
+        #optimal_V = [Q[state, policy[state]] for state in range(self.state_size)]
+        optimal_V = self.monte_carlo_policy_estimation(policy, discount, nbr_episodes)
+        return policy, optimal_V, episode_returns
+
+    def temporal_difference_estimation(self, policy, learning_rate, epsilon):
+        V = np.zeros(self.state_size)  # state-action function
+        episode_index = 0
+
+        while episode_index < nbr_episodes:  # todo convergence
+            episode_index += 1
+            if not (episode_index % 100):
+                print("TD estimation - Episode {}/{}".format(episode_index, nbr_episodes))
+
+            # starting state and action are chosen uniformly randomly from all non-terminal states and possible actions
+            curr_state = np.random.randint(0, self.state_size)
+
+            while not self.absorbing[curr_state]:
+                action = np.argmax(np.random.multinomial(1, policy[curr_state]))
+
+                # observe S' and R
+                next_state = np.argmax(np.random.multinomial(1, self.T[:, curr_state, action]))
+                reward = self.R[next_state, curr_state, action]
+
+                V[curr_state] += learning_rate * (
+                            reward + discount * V[next_state] - V[curr_state])
+                curr_state = next_state
+
+        return V
+
+    def temporal_difference_control(self, discount, nbr_episodes, learning_rate, epsilon):
+        Q = np.zeros((self.state_size, self.action_size))  # state-action function
+        episode_index = 0
+        episode_returns = []
+
+        while episode_index < nbr_episodes:  #todo convergence
+            episode_index += 1
+            if not (episode_index % 100):
+                print("TD control - Episode {}/{}".format(episode_index, nbr_episodes))
+
+            # starting state and action are chosen uniformly randomly from all non-terminal states and possible actions
+            curr_state = np.random.randint(0, self.state_size)
+            episode_return = 0
+
+            while not self.absorbing[curr_state]:
+                action = self._get_next_action_from_epsilon_greedy_policy(Q, curr_state, epsilon)
+
+                # observe S' and R
+                next_state = np.argmax(np.random.multinomial(1, self.T[:, curr_state, action]))
+                reward = self.R[next_state, curr_state, action]
+
+                Q[curr_state, action] += learning_rate * (reward + discount * max(Q[next_state, :]) - Q[curr_state, action])
+                curr_state = next_state
+
+                episode_return = discount * episode_return + reward
+
+            episode_returns.append(episode_return)
+
+            # todo decay epsilon
+            #epsilon =
+
+        optimal_policy = self._get_epsilon_greedy_policy(Q, epsilon)
+        optimal_V = self.temporal_difference_estimation(optimal_policy, epsilon)
+        return optimal_policy, optimal_V, episode_returns
+
+    def generate_episode(self, policy, state, action):
+        """Generates an episode (trace) using given policy and starting state and action
+        :return: episode - list of tuples of the form (state, action, reward)
+        """
+        episode = []
+        while True:
+            # continue while episode hasn't reached a final state
+
+            # random determination of next state based on transition matrix given current state and action
+            next_state = np.argmax(np.random.multinomial(1, self.T[:, state, action]))
+            reward = self.R[next_state, state, action]  # get reward when moving to the next state
+            episode.append((state, action, reward))
+
+            if self.absorbing[next_state]:
+                break
+
+            state = next_state
+            # random determination of next action based on policy given current state
+            # todo deterministic?
+            #action = np.argmax(np.random.multinomial(1, policy[state]))
+            action = policy[state]
+
+        return episode
+
+    def _get_next_action_from_epsilon_greedy_policy(self, Q, state, epsilon):
+        """non deterministic epsi-greedy"""
+        proba = [epsilon / self.action_size] * self.action_size
+        proba[np.argmax(Q[state, :])] += 1 - epsilon
+        return np.argmax(np.random.multinomial(1, proba))
+
+    def _get_epsilon_greedy_policy(self, Q, epsilon):
+        """slide 196"""
+        policy = np.zeros((self.state_size, self.action_size))
+        for state in self.state_size:
+            best_action = np.argmax(Q[state, :])
+            for action in self.action_size:
+                if action == best_action:
+                    policy[state, action] = 1 - epsilon + epsilon / self.action_size
+                else:
+                    policy[state, action] = epsilon / self.action_size
+        return policy
+
+
+    def _get_first_visit_return(self, episode, starting_pair, discount):
+        """Computes total forward discounted reward following first occurrence of (state, action) in episode"""
+        start_counting = False
+        forward_discounted_reward = 0
+        for i, (state, action, reward) in enumerate(episode):
+            if not start_counting and (state, action) == starting_pair:
+                # found first occurrence of pair
+                start_counting = True
+            if start_counting:
+                forward_discounted_reward += (discount ** i) * reward
+        return forward_discounted_reward
+
+    def _get_episode_return(self, episode, discount):
+        """Computes total backward discounted reward of entire episode """
+        return reduce((lambda total, reward: discount * total + reward), list(list(zip(*episode))[2]))
+
 
 #%% Question 2.a
 
@@ -389,10 +556,10 @@ x, y = 3, 3
 p = 0.25 + 0.5 * (x + 1) / 10
 discount = 0.2 + 0.5 * y / 10
 print("p = {} and gamma = {}".format(p, discount))
+grid = GridWorld(p)
 
 #%% Question 2.b Dynamic Programming (Value Iteration)
-
-grid = GridWorld(p)
+"""
 ### Question 2.b.1
 optimal_policy, optimal_V, epochs = grid.value_iteration(discount)
 print("Value Iteration epochs {}".format(epochs))
@@ -415,12 +582,50 @@ for (p, discount) in itertools.product(p_range, discount_range):
 
 # Print all value functions and policies for different values of p and discount
 grid.draw_value_and_policy_grid(param_search_results, (len(p_range), len(discount_range)), ["p", "discount"],  "Value function and optimal policy against different p and discount")
-
+"""
 #%% Question 2.c Monte Carlo RL
+"""
+nbr_episodes = 1000
+learning_rate = 0.7  # old episodes discarding rate
+optimal_policy, optimal_V, episode_returns = grid.monte_carlo_exploring_starts(discount, nbr_episodes, learning_rate)
 
+### Question 2.c.2
+# verif using DP
+V_DP = grid.policy_evaluation(np.eye(grid.action_size)[optimal_policy], discount)[0]
+
+grid.draw_value(optimal_V, "Optimal estimated value function from MC Algorithm")
+grid.draw_value(V_DP, "Optimal estimated value function from DP policy eval")
+grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from MC algorithm")
+
+## Question 2.c.3
+plt.plot(episode_returns)
+plt.title("Backward discounted reward for each episode")
+plt.xlabel("episode index")
+plt.ylabel("Episode return")
+plt.show()
+"""
 
 #%% Question 2.d Temporal Difference RL
+nbr_episodes = 1000
+learning_rate = 0.5  # old episodes discarding rate
+epsilon = 0.1  # old episodes discarding rate
+optimal_policy, optimal_V, episode_returns = grid.temporal_difference_control(discount, nbr_episodes, learning_rate)
 
+### Question 2.c.2
+# verif using DP
+V_DP = grid.policy_evaluation(np.eye(grid.action_size)[optimal_policy], discount)[0]
+
+grid.draw_value(optimal_V, "Optimal estimated value function from TD "
+                           "")
+grid.draw_value(V_DP, "Optimal estimated value function from DP policy eval")
+grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from TD algorithm")
+
+## Question 2.c.3
+plt.plot(episode_returns)
+plt.title("Backward discounted reward for each episode")
+plt.xlabel("episode index")
+plt.ylabel("Episode return")
+plt.show()
 
 #%% Question 2.e Comparison of learners
 
