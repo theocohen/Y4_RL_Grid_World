@@ -7,7 +7,7 @@ from functools import reduce
 
 #%% Question 1.c.3 State Value
 
-P = np.array([[0, 1, 0, 0],
+P = np.array([[1, 1, 0, 0],
               [0, 1 / 3, 1 / 3, 1 / 3],
               [0, 0, 1, 0],
               [1 / 2, 1 / 2, 0, 0]])
@@ -159,7 +159,7 @@ class GridWorld(object):
 
     ### Drawing Functions
 
-    def draw_deterministic_policy(self, policy, title):
+    def draw_deterministic_policy(self, policy, title, filename=''):
         """
         Draws a deterministic policy.
         The policy needs to be a np array of 22 values between 0 and 3 with.
@@ -174,9 +174,11 @@ class GridWorld(object):
                 location = self.locs[state]  # Compute its location on graph
                 plt.text(location[1], location[0], self.action_arrows[action], ha='center', va='center')  # Place it on graph
         plt.title(title)
+        if not filename == '':
+            plt.savefig(filename)
         plt.show()
 
-    def draw_value(self, Value, title):
+    def draw_value(self, Value, title, filename=''):
         """
         Draws a policy value function.
         The value need to be a np array of 22 values
@@ -189,6 +191,8 @@ class GridWorld(object):
                 location = self.locs[state]  # Compute the value location on graph
                 plt.text(location[1], location[0], round(value, 2), ha='center', va='center')  # Place it on graph
         plt.title(title)
+        if not filename == '':
+            plt.savefig(filename)
         plt.show()
 
     def draw_deterministic_policy_grid(self, policy, title, n_columns, n_lines):
@@ -415,6 +419,8 @@ class GridWorld(object):
             first_visit_returns, episode_return = self.generate_episode(policy, starting_state, starting_action, discount)
             for (state, action), discounted_rewards in first_visit_returns.items():
                 G = sum(discounted_rewards)
+                if type(lr) is tuple:
+                    lr = self._get_lambda(episode_index, nbr_episodes, lr)
                 Q[state, action] += lr * (G - Q[state, action])  # non-stationary running mean
 
             policy = self._get_epsilon_greedy_policy(Q, epsilon)
@@ -483,7 +489,7 @@ class GridWorld(object):
         return V
     """
 
-    def temporal_difference_Q_learning(self, discount, nbr_episodes, learning_rate, epsilon, verbose=False):
+    def temporal_difference_Q_learning(self, discount, nbr_episodes, lr, epsilon, verbose=False):
         Q = np.zeros((self.state_size, self.action_size))  # state-action function
         episode_index = 0
         episode_returns = []
@@ -506,7 +512,9 @@ class GridWorld(object):
                 next_state = np.argmax(np.random.multinomial(1, self.T[:, curr_state, action]))
                 reward = self.R[next_state, curr_state, action]
 
-                Q[curr_state, action] += learning_rate * (reward + discount * max(Q[next_state, :]) - Q[curr_state, action])
+                if type(lr) is tuple:
+                    lr = self._get_lambda(episode_index, nbr_episodes, lr)
+                Q[curr_state, action] += lr * (reward + discount * max(Q[next_state, :]) - Q[curr_state, action])
                 curr_state = next_state
 
                 episode_return = discount * episode_return + reward
@@ -536,8 +544,8 @@ class GridWorld(object):
     def _get_epsilon(self, t):
         return 1 * ((10 + t) ** -.6)
 
-    def _get_lambda(self, t, N, max_lr, min_lr):
-        return ((N - t) / N) * (max_lr - min_lr) + min_lr
+    def _get_lambda(self, t, N, lr):
+        return ((N - t) / N) * (lr[0] - lr[1]) + lr[1]
 
     ### Evaluation methods
 
@@ -550,6 +558,8 @@ class GridWorld(object):
 
 
 #%% Question 2.a
+
+DIR = './TEMP/'
 
 # CID: 01352334
 x, y = 3, 3
@@ -590,10 +600,9 @@ grid.draw_value_and_policy_grid(param_search_results, (len(p_range), len(discoun
 
 #%% Question 2.c Monte Carlo RL
 
-nbr_episodes = 30000
-runs = 200
-#max_lr, min_lr = 0.5, 0.01  # old episodes discarding rate
-lr = 0.6
+nbr_episodes = 300
+runs = 10
+lr = (0.5, 0.005)
 epsilon = 0.1
 
 episode_returns_grid = []
@@ -609,10 +618,10 @@ for i in range(0, runs):
 # verif using DP
 #V_DP = grid.policy_evaluation(optimal_policy, discount)[0]
 
-grid.draw_value(optimal_V, "Optimal estimated value function from MC")
+grid.draw_value(optimal_V, "Optimal estimated value function from MC", filename=(DIR + 'value_MC.png'))
 #grid.draw_value(V_DP, "Optimal estimated value function from DP policy eval")
 
-grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from MC algorithm")
+grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from MC algorithm", filename=(DIR + 'policy_MC.png'))
 
 ## Question 2.c.3
 episode_returns_mean = np.mean(episode_returns_grid, axis=0)
@@ -624,6 +633,7 @@ plt.legend()
 plt.title("Backward discounted reward for each episode in MC")
 plt.xlabel("episode index")
 plt.ylabel("Episode return")
+plt.savefig(DIR + 'returns_MC.png')
 plt.show()
 
 # Confidence Interval
@@ -637,10 +647,59 @@ plt.xlabel("episode index")
 plt.ylabel("Episode return")
 plt.show()
 
+## Question 2.c.4
+lrs = [0.05, 0.1, 0.3, 0.5, 0.7]
+epsilons = [0, 0.05, 0.01, 0.03, 0.07, 0.1, 0.3]
+SEARCH_DIR = DIR + 'SEARCH/'
+
+grid_search_episode_values_MC = {}
+for lr, epsilon in itertools.product(lrs, epsilons):
+    params = "-lr={}-epsi={}".format(lr, epsilon)
+    print("HYPER PARAMS" + params)
+
+    episode_returns_grid = []
+    grid_search_episode_values_MC[(lr, epsilon)] = []
+    optimal_Vs = []
+    for i in range(0, runs):
+        print('MC run {}/{}'.format(i + 1, runs))
+        optimal_policy, optimal_V, episode_returns, episode_values = grid.monte_carlo_iterative_control(discount,
+                                                                                                        nbr_episodes,
+                                                                                                        lr, epsilon)
+        episode_returns_grid.append(episode_returns)
+        grid_search_episode_values_MC[(lr, epsilon)].append(episode_values)
+
+    grid.draw_value(optimal_V, "Optimal value MC" + params, filename=(SEARCH_DIR + 'values_MC' + params))
+
+    grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from MC" + params, filename=(SEARCH_DIR + 'policy_MC' + params))
+
+    episode_returns_mean = np.mean(episode_returns_grid, axis=0)
+    episode_returns_std = np.std(episode_returns_grid, axis=0)
+    plt.plot(episode_returns_mean, label='returns mean', color='blue')
+    plt.plot(episode_returns_mean + episode_returns_std, alpha=0.5, color='r', label='returns +/- std')
+    plt.plot(episode_returns_mean - episode_returns_std, alpha=0.5, color='g')
+    plt.legend()
+    plt.title("Returns for each episode in MC" + params)
+    plt.xlabel("episode index")
+    plt.ylabel("Episode return")
+    plt.savefig(SEARCH_DIR + 'returns_MC' + params)
+    plt.show()
+
+# RMSE
+plt.figure(figsize=(25, 20))
+for (lr, epsilon), episode_values_grid in grid_search_episode_values_MC.items():
+    episode_average_rmse = grid.values_root_mean_square_error_average(optimal_V_DP, episode_values_grid)
+    label = 'lr={}, epsi={}'.format(lr, epsilon)
+    plt.plot(episode_average_rmse, color='g', label=label)
+plt.xlabel('episodes')
+plt.ylabel('RMSE')
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small')
+plt.title('RMSE of MC state-values averaged over runs against DP')
+plt.savefig(SEARCH_DIR + 'comparison_MC.png')
+plt.show()
+
 
 #%% Question 2.d Temporal Difference RL
 
-learning_rate = 0.6  # old episodes discarding rate
 epsilon = 0.1  # old episodes discarding rate
 
 episode_returns_grid = []
@@ -648,7 +707,7 @@ episode_values_grid_TD = []
 optimal_Vs = []
 for i in range(0, runs):
     print('TD run {}/{}'.format(i + 1, runs))
-    optimal_policy, optimal_V, episode_returns, episode_values = grid.temporal_difference_Q_learning(discount, nbr_episodes, learning_rate, epsilon, verbose=True)
+    optimal_policy, optimal_V, episode_returns, episode_values = grid.temporal_difference_Q_learning(discount, nbr_episodes, lr, epsilon, verbose=True)
     episode_returns_grid.append(episode_returns)
     episode_values_grid_TD.append(episode_values)
 
@@ -656,9 +715,9 @@ for i in range(0, runs):
 # verif using DP
 #V_DP = grid.policy_evaluation(optimal_policy, discount)[0]
 
-grid.draw_value(optimal_V, "Optimal estimated value function from TD")
+grid.draw_value(optimal_V, "Optimal estimated value function from TD", filename= (DIR +'value_TD.png'))
 #grid.draw_value(V_DP, "Optimal estimated value function from DP policy eval")
-grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from TD algorithm")
+grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from TD algorithm", filename= (DIR +'policy_TD.png'))
 
 ## Question 2.c.3
 episode_returns_mean = np.mean(episode_returns_grid, axis=0)
@@ -670,6 +729,7 @@ plt.legend()
 plt.title("Backward discounted reward for each episode in TD")
 plt.xlabel("episode index")
 plt.ylabel("Episode return")
+plt.savefig(DIR + 'returns_TD.png')
 plt.show()
 
 # Confidence Interval
@@ -683,7 +743,52 @@ plt.xlabel("episode index")
 plt.ylabel("Episode return")
 plt.show()
 
-## Question 2.c.4
+## Question 2.d.4
+grid_search_episode_values_TD = {}
+for lr, epsilon in itertools.product(lrs, epsilons):
+    params = "-lr={}-epsi={}".format(lr, epsilon)
+    print("HYPER PARAMS:" + params)
+
+    episode_returns_grid = []
+    grid_search_episode_values_TD[(lr, epsilon)] = []
+    optimal_Vs = []
+    for i in range(0, runs):
+        print('TD run {}/{}'.format(i + 1, runs))
+        optimal_policy, optimal_V, episode_returns, episode_values = grid.temporal_difference_Q_learning(discount,
+                                                                                                         nbr_episodes,
+                                                                                                         lr, epsilon)
+        episode_returns_grid.append(episode_returns)
+        grid_search_episode_values_MC[(lr, epsilon)].append(episode_values)
+
+    grid.draw_value(optimal_V, "Optimal value from TD " + params, filename=(SEARCH_DIR + 'values_TD' + params))
+
+    grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from TD " + params,
+                                   filename=(SEARCH_DIR + 'policy_TD' + params))
+
+    episode_returns_mean = np.mean(episode_returns_grid, axis=0)
+    episode_returns_std = np.std(episode_returns_grid, axis=0)
+    plt.plot(episode_returns_mean, label='returns mean', color='blue')
+    plt.plot(episode_returns_mean + episode_returns_std, alpha=0.5, color='r', label='returns +/- std')
+    plt.plot(episode_returns_mean - episode_returns_std, alpha=0.5, color='g')
+    plt.legend()
+    plt.title("Returns for each episode in TD" + params)
+    plt.xlabel("episode index")
+    plt.ylabel("Episode return")
+    plt.savefig(SEARCH_DIR + 'returns_TD' + params)
+    plt.show()
+
+# RMSE
+plt.figure(figsize=(25, 20))
+for (lr, epsilon), episode_values_grid in grid_search_episode_values_TD.items():
+    episode_average_rmse = grid.values_root_mean_square_error_average(optimal_V_DP, episode_values_grid)
+    label = 'lr={}, epsi={}'.format(lr, epsilon)
+    plt.plot(episode_average_rmse, color='g', label=label)
+plt.xlabel('episodes')
+plt.ylabel('RMSE')
+plt.legend(plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small'))
+plt.title('RMSE of TD state-values averaged over runs against DP')
+plt.savefig(SEARCH_DIR + 'comparison_TD.png')
+plt.show()
 
 
 #%% Question 2.e Comparison of learners
@@ -700,4 +805,5 @@ plt.xlabel('episodes')
 plt.ylabel('RMSE')
 plt.legend()
 plt.title('RMSE of state-values averaged over runs against DP')
+plt.savefig(DIR + 'comparison.png')
 plt.show()
