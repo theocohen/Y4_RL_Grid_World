@@ -668,9 +668,9 @@ for lr, epsilon in itertools.product(lrs, epsilons):
         episode_returns_grid.append(episode_returns)
         grid_search_episode_values_MC[(lr, epsilon)].append(episode_values)
 
-    grid.draw_value(optimal_V, "Optimal value MC" + params, filename=(SEARCH_DIR + 'values_MC' + params))
+    grid.draw_value(optimal_V, "Optimal value MC" + params, filename=(SEARCH_DIR + 'values_MC' + params + '.png'))
 
-    grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from MC" + params, filename=(SEARCH_DIR + 'policy_MC' + params))
+    grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from MC" + params, filename=(SEARCH_DIR + 'policy_MC' + params + '.png'))
 
     episode_returns_mean = np.mean(episode_returns_grid, axis=0)
     episode_returns_std = np.std(episode_returns_grid, axis=0)
@@ -681,7 +681,7 @@ for lr, epsilon in itertools.product(lrs, epsilons):
     plt.title("Returns for each episode in MC" + params)
     plt.xlabel("episode index")
     plt.ylabel("Episode return")
-    plt.savefig(SEARCH_DIR + 'returns_MC' + params)
+    plt.savefig(SEARCH_DIR + 'returns_MC' + params + '.png')
     plt.show()
 
 # RMSE
@@ -689,7 +689,7 @@ plt.figure(figsize=(25, 20))
 for (lr, epsilon), episode_values_grid in grid_search_episode_values_MC.items():
     episode_average_rmse = grid.values_root_mean_square_error_average(optimal_V_DP, episode_values_grid)
     label = 'lr={}, epsi={}'.format(lr, epsilon)
-    plt.plot(episode_average_rmse, color='g', label=label)
+    plt.plot(episode_average_rmse, label=label)
 plt.xlabel('episodes')
 plt.ylabel('RMSE')
 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small')
@@ -758,12 +758,12 @@ for lr, epsilon in itertools.product(lrs, epsilons):
                                                                                                          nbr_episodes,
                                                                                                          lr, epsilon)
         episode_returns_grid.append(episode_returns)
-        grid_search_episode_values_MC[(lr, epsilon)].append(episode_values)
+        grid_search_episode_values_TD[(lr, epsilon)].append(episode_values)
 
-    grid.draw_value(optimal_V, "Optimal value from TD " + params, filename=(SEARCH_DIR + 'values_TD' + params))
+    grid.draw_value(optimal_V, "Optimal value from TD " + params, filename=(SEARCH_DIR + 'values_TD' + params + '.png'))
 
     grid.draw_deterministic_policy(optimal_policy, "Optimal Policy from TD " + params,
-                                   filename=(SEARCH_DIR + 'policy_TD' + params))
+                                   filename=(SEARCH_DIR + 'policy_TD' + params + '.png'))
 
     episode_returns_mean = np.mean(episode_returns_grid, axis=0)
     episode_returns_std = np.std(episode_returns_grid, axis=0)
@@ -774,7 +774,7 @@ for lr, epsilon in itertools.product(lrs, epsilons):
     plt.title("Returns for each episode in TD" + params)
     plt.xlabel("episode index")
     plt.ylabel("Episode return")
-    plt.savefig(SEARCH_DIR + 'returns_TD' + params)
+    plt.savefig(SEARCH_DIR + 'returns_TD' + params + '.png')
     plt.show()
 
 # RMSE
@@ -782,10 +782,10 @@ plt.figure(figsize=(25, 20))
 for (lr, epsilon), episode_values_grid in grid_search_episode_values_TD.items():
     episode_average_rmse = grid.values_root_mean_square_error_average(optimal_V_DP, episode_values_grid)
     label = 'lr={}, epsi={}'.format(lr, epsilon)
-    plt.plot(episode_average_rmse, color='g', label=label)
+    plt.plot(episode_average_rmse, label=label)
 plt.xlabel('episodes')
 plt.ylabel('RMSE')
-plt.legend(plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small'))
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='xx-small')
 plt.title('RMSE of TD state-values averaged over runs against DP')
 plt.savefig(SEARCH_DIR + 'comparison_TD.png')
 plt.show()
